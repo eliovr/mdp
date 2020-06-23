@@ -4,6 +4,6 @@ let pc = new ParallelCoordinates('pc');
 fdg.addListener(pc);
 pc.addListener(fdg);
 
-d3.json("/data/iris.json", (error, json) => {
+d3.json("/data/mnist.json", (error, json) => {
   fdg.setData(json.nodes, json.links);
 });

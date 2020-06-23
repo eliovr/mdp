@@ -9,7 +9,7 @@ class ForceDirectedGraph {
     this.listeners = [];
 
     this.withImages = false;
-    this.displayHint = true;
+    this.displayHint = false;
 
     this.minNodeRadius = 5;
     this.maxNodeRadius = 15;
@@ -22,7 +22,7 @@ class ForceDirectedGraph {
     this.width = width;
     this.height = height;
     this.force = d3.layout.force()
-        .gravity(.04)
+        .gravity(.08)
         .distance(this.distance)
         .charge(this.charge)
         .size([width, height]);
@@ -48,7 +48,13 @@ class ForceDirectedGraph {
   getNodes() {
     return this.svg
       .select('g.nodes')
-      .selectAll('g.node')
+      .selectAll('g.node');
+  }
+
+  getLinks() {
+    return this.svg
+      .select('g.links')
+      .selectAll('line');
   }
 
   setData(newNodes, newLinks) {
@@ -72,33 +78,17 @@ class ForceDirectedGraph {
 
     // ------------- links
 
-    function linkStrokeWidth(d) {
-      return d.width || null;
-    }
-
-    function linkDistance(d) {
-      let dist = d.distance || self.defaultLinkDistance;
-      let sr = d.source.radius || self.minNodeRadius;
-      let tr = d.target.radius || self.minNodeRadius;
-      return dist + sr + tr;
-    }
-
-    let links = self.svg
-      .select('g.links')
-      .selectAll('line')
-      .data(newLinks);
+    let links = self.getLinks().data(newLinks);
 
     // update
-    links.style('stroke-width', linkStrokeWidth);
+    links.style('stroke-width', (d) => self.linkStrokeWidth(d));
     // remove
     links.exit().remove();
     // create
     links.enter().append('line')
-      .style('stroke-width', linkStrokeWidth);
+      .style('stroke-width', (d) => self.linkStrokeWidth(d));
 
     // ---------------- nodes
-
-
 
     function onMouseover(d) {
         if (self.selectedCounter > 0 && !d.selected)
@@ -147,10 +137,39 @@ class ForceDirectedGraph {
     }
 
     let nodes = self.getNodes()
-      .data(newNodes, (d) => self.nodeId(d));
+      .data(newNodes, self.nodeId);
 
     // remove.
     nodes.exit().remove();
+
+    // create.
+    let createdNodes = nodes.enter().append("g")
+      .attr("class", "node")
+      .style('opacity', (d) => self.nodeOpacity(d))
+      .call(self.force.drag)
+      .on('mouseover', onMouseover)
+      .on('mouseout', onMouseout)
+      .on('click', onClick);
+
+    if (self.withImages) {
+      createdNodes.append('image')
+        .attr("xlink:href", (d) => self.nodeImage(d))
+        .attr("width", (d) => self.imageWidth(d));
+    } else {
+      createdNodes.append('circle')
+        .attr('r', (d) => self.nodeRadius(d))
+        .attr('stroke', (d) => self.nodeStroke(d))
+        .attr('fill', (d) => self.nodeFill(d));
+    }
+
+    if (this.displayHint) {
+      createdNodes.append('text')
+        .attr("dx", 15)
+        .attr("dy", ".05em")
+        .attr('stroke-width', .5)
+        .style('font-size', self.hintFontSize)
+        .text((d) => self.nodeHint(d));
+    }
 
     // update.
     nodes.style('opacity', (d) => self.nodeOpacity(d));
@@ -169,39 +188,11 @@ class ForceDirectedGraph {
       nodes.selectAll('text').text((d) => self.nodeHint(d));
     }
 
-    // create.
-    nodes = nodes.enter().append("g")
-      .attr("class", "node")
-      .style('opacity', (d) => self.nodeOpacity(d))
-      .call(self.force.drag)
-      .on('mouseover', onMouseover)
-      .on('mouseout', onMouseout)
-      .on('click', onClick);
-
-    if (self.withImages) {
-      nodes.append('image')
-        .attr("xlink:href", (d) => self.nodeImage(d))
-        .attr("width", (d) => self.imageWidth(d));
-    } else {
-      nodes.append('circle')
-        .attr('r', (d) => self.nodeRadius(d))
-        .attr('stroke', (d) => self.nodeStroke(d))
-        .attr('fill', (d) => self.nodeFill(d));
-    }
-
-    if (this.displayHint) {
-      nodes.append('text')
-        .attr("dx", 15)
-        .attr("dy", ".05em")
-        .style('font-size', self.hintFontSize)
-        .text((d) => self.nodeHint(d));
-    }
-
     // force-directed placement.
     self.force
       .nodes(newNodes)
       .links(newLinks)
-      .linkDistance(linkDistance)
+      .linkDistance((d) => self.linkDistance(d))
       .alpha(.05)
       .on('tick', (t) => {
         links
@@ -210,7 +201,12 @@ class ForceDirectedGraph {
             .attr('x2', (d) => { return d.target.x; })
             .attr('y2', (d) => { return d.target.y; });
 
-        nodes.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+        // nodes.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+        nodes.attr('transform', function (d) {
+          let x = Math.max(d.radius, Math.min(self.width - d.radius, d.x));
+          let y = Math.max(d.radius, Math.min(self.height - d.radius, d.y));
+          return "translate(" + x + "," + y + ")";
+        });
       })
       .start();
 
@@ -223,6 +219,17 @@ class ForceDirectedGraph {
     }
   }
 
+  linkStrokeWidth(d) {
+    return d.width || null;
+  }
+
+  linkDistance(d) {
+    let dist = d.distance || this.defaultLinkDistance;
+    let sr = d.source.radius || this.minNodeRadius;
+    let tr = d.target.radius || this.minNodeRadius;
+    return dist + sr + tr;
+  }
+
   nodeId(d) {
     return d.id || null;
   }
@@ -232,10 +239,10 @@ class ForceDirectedGraph {
   }
 
   nodeFill(d) {
-    if (typeof d.fill != 'undefined' && d.fill >= 0) {
-      return d3.hsl(d.fill, 1, 0.5);
-    } else if (typeof d.hsl != 'undefined') {
+    if (typeof d.hsl != 'undefined') {
       return d3.hsl(d.hsl[0], d.hsl[1], d.hsl[2]);
+    } else if (typeof d.fill != 'undefined' && d.fill >= 0) {
+      return d3.hsl(d.fill, 1, 0.5);
     } else {
       return null;
     }
