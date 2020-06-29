@@ -1,8 +1,10 @@
 class ParallelCoordinates {
   constructor(elem_id) {
+    this.id = elem_id;
+    this.datahub = null;
+
     this.features = [];
     this.filters = { lower: [], upper: [] };
-    this.listeners = [];
 
     this.painted = false;
 
@@ -22,7 +24,7 @@ class ParallelCoordinates {
 
     this.svg = d3.select('#' + elem_id);
 
-    this.series_style = { 'stroke': 'gray', 'fill': 'none', 'stroke-opacity': '0.5' };
+    this.series_style = { 'stroke': 'gray', 'fill': 'none', 'stroke-opacity': '0.7' };
     this.ticks_line_style = { 'stroke': '#78797c', 'fill': 'none' };
     this.ticks_text_style = { 'stroke': 'none', 'fill': 'black', 'font-size': '12px' };
     this.axis_bg_style = { 'fill': 'darkgray', 'opacity': '.4', 'stroke': 'black' };
@@ -97,11 +99,8 @@ class ParallelCoordinates {
   }
 
   onFilter(elems) {
-    for (var i = 0; i < this.listeners.length; i++) {
-      let listener = this.listeners[i];
-      if (typeof listener.hearSelected != 'undefined') {
-        listener.hearSelected(elems, this);
-      }
+    if (this.datahub != null && typeof this.datahub != 'undefined') {
+      this.datahub.notifySelected(elems, this);
     }
   }
 
@@ -445,22 +444,23 @@ class ParallelCoordinates {
     });
   }
 
-  addListener(listener) {
-    this.listeners.push(listener);
+  listen(hub) {
+    this.datahub = hub;
+    return this;
   }
 
-  hearUpdate(data, caller) {
-    this.setData(data);
+  listenUpdate(data, caller) {
+    this.setData(data.nodes);
   }
 
-  hearClick(elem, caller) {
+  listenMouseclick(elem, caller) {
     let line = this.getSeries().data()
       .find(function(d){ return d.id === elem.id; });
 
     if (line) line.selected = elem.selected;
   }
 
-  hearMouseover(elem, caller) {
+  listenMouseover(elem, caller) {
     let lines = this.getSeries();
 
     lines
@@ -475,7 +475,7 @@ class ParallelCoordinates {
       .attr('stroke-opacity', 1);
   }
 
-  hearMouseout(elem, caller) {
+  listenMouseout(elem, caller) {
     if (caller.selectedCounter <= 0) {
       this.getSeries()
         .attr('stroke', (d) => this.getStroke(d))
